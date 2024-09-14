@@ -10,7 +10,9 @@
 
 <.list>
   <:item title="Name"><%= @document.name %></:item>
-  <:item title="Filename"><%= @document.filename %></:item>
+  <:item title="Filename">
+    <a href={~p"/uploads/#{@document.filename}"}><%= @document.filename %></a>
+  </:item>
 </.list>
 
 <.back navigate={~p"/documents"}>Back to documents</.back>

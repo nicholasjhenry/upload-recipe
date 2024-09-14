@@ -20,7 +20,40 @@ defmodule UploadRecipeWeb.DocumentLive.FormComponent do
         phx-submit="save"
       >
         <.input field={@form[:name]} type="text" label="Name" />
-        <.input field={@form[:filename]} type="text" label="Filename" />
+
+        <.live_file_input upload={@uploads.file} />
+        <section phx-drop-target={@uploads.file.ref}>
+          <%!-- render each file entry --%>
+          <%= for entry <- @uploads.file.entries do %>
+            <article class="upload-entry">
+              <figure>
+                <%!-- <.live_img_preview entry={entry} /> --%>
+                <figcaption><%= entry.client_name %></figcaption>
+              </figure>
+              <%!-- entry.progress will update automatically for in-flight entries --%>
+              <progress value={entry.progress} max="100"><%= entry.progress %>%</progress>
+              <%!-- a regular click event whose handler will invoke Phoenix.LiveView.cancel_upload/3 --%>
+              <button
+                type="button"
+                phx-target={@myself}
+                phx-click="cancel-upload"
+                phx-value-ref={entry.ref}
+                aria-label="cancel"
+              >
+                &times;
+              </button>
+              <%!-- Phoenix.Component.upload_errors/2 returns a list of error atoms --%>
+              <%= for err <- upload_errors(@uploads.file, entry) do %>
+                <p class="alert alert-danger"><%= error_to_string(err) %></p>
+              <% end %>
+            </article>
+          <% end %>
+          <%!-- Phoenix.Component.upload_errors/1 returns a list of error atoms --%>
+          <%= for err <- upload_errors(@uploads.file) do %>
+            <p class="alert alert-danger"><%= error_to_string(err) %></p>
+          <% end %>
+        </section>
+
         <:actions>
           <.button phx-disable-with="Saving...">Save Document</.button>
         </:actions>
@@ -34,6 +67,8 @@ defmodule UploadRecipeWeb.DocumentLive.FormComponent do
     {:ok,
      socket
      |> assign(assigns)
+     |> assign(:uploaded_files, [])
+     |> allow_upload(:file, accept: ~w(.pdf), max_entries: 1)
      |> assign_new(:form, fn ->
        to_form(Documents.change_document(document))
      end)}
@@ -46,7 +81,31 @@ defmodule UploadRecipeWeb.DocumentLive.FormComponent do
   end
 
   def handle_event("save", %{"document" => document_params}, socket) do
+    [uploaded_file] = upload_files(socket, ".pdf")
+    document_params = Map.put(document_params, "filename", uploaded_file)
     save_document(socket, socket.assigns.action, document_params)
+  end
+
+  def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :file, ref)}
+  end
+
+  defp upload_files(socket, extension) do
+    consume_uploaded_entries(socket, :file, fn %{path: path}, entry ->
+      filename =
+        Enum.join([
+          Path.basename(entry.client_name, extension),
+          "-",
+          Ecto.UUID.generate(),
+          extension
+        ])
+
+      dest = Path.join(Application.app_dir(:upload_recipe, "priv/static/uploads"), filename)
+
+      # You will need to create `priv/static/uploads` for `File.cp!/2` to work.
+      File.cp!(path, dest)
+      {:ok, filename}
+    end)
   end
 
   defp save_document(socket, :edit, document_params) do
@@ -80,4 +139,8 @@ defmodule UploadRecipeWeb.DocumentLive.FormComponent do
   end
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
+
+  defp error_to_string(:too_large), do: "Too large"
+  defp error_to_string(:not_accepted), do: "You have selected an unacceptable file type"
+  defp error_to_string(:too_many_files), do: "You have selected too many files"
 end
