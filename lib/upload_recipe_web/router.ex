@@ -17,6 +17,13 @@ defmodule UploadRecipeWeb.Router do
   scope "/", UploadRecipeWeb do
     pipe_through :browser
 
+    live "/documents", DocumentLive.Index, :index
+    live "/documents/new", DocumentLive.Index, :new
+    live "/documents/:id/edit", DocumentLive.Index, :edit
+
+    live "/documents/:id", DocumentLive.Show, :show
+    live "/documents/:id/show/edit", DocumentLive.Show, :edit
+
     get "/", PageController, :home
   end
 
